@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group Presentation Slot Allocator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #13161e;
+    --surface2: #1a1e2a;
+    --border: #242836;
+    --accent: #5b8dee;
+    --accent2: #e85b8d;
+    --accent3: #5beec4;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --taken: #2a1a1a;
+    --taken-border: #7c2d2d;
+    --taken-text: #ef4444;
+    --available: #0f1f18;
+    --available-border: #1d5440;
+    --available-text: #5beec4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Noise overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: 0.4;
+  }
+
+  header {
+    position: relative; z-index: 10;
+    padding: 36px 40px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #1a1e2a 0%, transparent 100%);
+  }
+  header .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 0.15em;
+    color: var(--accent); text-transform: uppercase; margin-bottom: 8px;
+  }
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(22px, 3vw, 32px);
+    font-weight: 800; color: var(--text);
+    line-height: 1.1;
+  }
+  header h1 span { color: var(--accent); }
+  .header-meta {
+    display: flex; gap: 24px; margin-top: 12px; flex-wrap: wrap;
+  }
+  .header-meta .chip {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 4px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .header-meta .chip .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent3);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 0;
+    min-height: calc(100vh - 100px);
+    position: relative; z-index: 1;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    background: var(--surface);
+    position: sticky; top: 0; height: calc(100vh - 100px);
+    overflow-y: auto;
+  }
+  .sidebar h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 16px;
+  }
+
+  .module-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+    margin-bottom: 10px; cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .module-card:hover { border-color: var(--accent); transform: translateX(2px); }
+  .module-card.active { border-color: var(--accent); background: #111828; }
+  .module-card .code {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px; font-weight: 500;
+    color: var(--accent); margin-bottom: 2px;
+  }
+  .module-card .name { font-size: 11px; color: var(--muted); }
+  .module-card .due {
+    font-size: 10px; color: var(--accent3);
+    font-family: 'DM Mono', monospace;
+    margin-top: 4px;
+  }
+  .module-card .national-badge {
+    font-size: 9px; background: #2a1e40; color: #a78bfa;
+    border: 1px solid #4c1d95; border-radius: 3px;
+    padding: 2px 5px; display: inline-block; margin-top: 4px;
+    font-family: 'DM Mono', monospace; text-transform: uppercase;
+  }
+  .module-card .slots-left {
+    font-size: 10px; color: var(--muted);
+    margin-top: 6px; font-family: 'DM Mono', monospace;
+  }
+  .module-card .slots-left span { color: var(--accent3); }
+
+  .legend { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 11px; color: var(--muted); }
+  .legend-box { width: 12px; height: 12px; border-radius: 3px; }
+
+  /* MAIN */
+  .main-content { padding: 24px 32px; }
+  .week-nav {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 20px;
+  }
+  .week-nav h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px; font-weight: 700;
+  }
+  .week-nav .nav-btn {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 4px 12px;
+    cursor: pointer; font-size: 13px; transition: border-color 0.2s;
+  }
+  .week-nav .nav-btn:hover { border-color: var(--accent); }
+
+  .schedule-grid {
+    display: grid;
+    grid-template-columns: 80px repeat(5, 1fr);
+    gap: 2px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .grid-header {
+    background: var(--surface2);
+    padding: 10px 8px;
+    text-align: center;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .grid-header.day-header { color: var(--text); }
+  .grid-header.day-header .date { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 2px; font-weight: 400; }
+  .time-label {
+    background: var(--surface);
+    padding: 0 8px;
+    display: flex; align-items: center; justify-content: flex-end;
+    font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted);
+    text-align: right; min-height: 36px;
+  }
+
+  .slot {
+    background: var(--surface);
+    min-height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; text-align: center; padding: 4px;
+    transition: background 0.2s, transform 0.1s;
+    position: relative;
+  }
+  .slot.unavailable { background: #0a0b0f; }
+  .slot.available {
+    background: var(--available);
+    border: 1px solid var(--available-border);
+    cursor: pointer;
+    color: var(--available-text);
+    font-family: 'DM Mono', monospace;
+    flex-direction: column; gap: 2px;
+  }
+  .slot.available:hover { background: #142b20; transform: scale(1.02); z-index: 2; }
+  .slot.taken {
+    background: var(--taken);
+    border: 1px solid var(--taken-border);
+    cursor: default; flex-direction: column; gap: 1px;
+  }
+  .slot.taken .slot-group { font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; color: var(--taken-text); }
+  .slot.taken .slot-module { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--muted); }
+  .slot.taken .slot-topic { font-size: 9px; color: #9ca3af; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+  .slot.available .avail-label { font-size: 9px; opacity: 0.7; }
+  .slot.available .click-hint { font-size: 8px; opacity: 0.5; }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px;
+    max-width: 480px; width: 90%;
+    position: relative;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 4px 10px;
+    cursor: pointer; font-size: 13px;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal h2 {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800;
+    margin-bottom: 4px; color: var(--text);
+  }
+  .modal .slot-info {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--accent); margin-bottom: 20px;
+  }
+  .form-group { margin-bottom: 16px; }
+  .form-group label {
+    display: block; font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .form-group input, .form-group select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 12px;
+    font-family: 'DM Sans', sans-serif; font-size: 13px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-group select option { background: var(--surface2); }
+
+  .btn-book {
+    width: 100%; background: var(--accent);
+    border: none; color: #fff; border-radius: 8px;
+    padding: 12px; font-family: 'Syne', sans-serif;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 4px;
+  }
+  .btn-book:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-book:active { transform: translateY(0); }
+
+  /* CONFIRMATION POPUP */
+  .confirm-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); backdrop-filter: blur(6px);
+    z-index: 200; align-items: center; justify-content: center;
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: var(--surface);
+    border: 2px solid var(--accent3);
+    border-radius: 16px; padding: 32px;
+    max-width: 440px; width: 90%; text-align: center;
+    animation: pop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes pop { from{opacity:0;transform:scale(0.8)} to{opacity:1;transform:scale(1)} }
+  .confirm-box .check { font-size: 48px; margin-bottom: 12px; }
+  .confirm-box h2 {
+    font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800;
+    color: var(--accent3); margin-bottom: 8px;
+  }
+  .confirm-box p { font-size: 13px; color: var(--muted); margin-bottom: 4px; line-height: 1.6; }
+  .confirm-details {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; margin: 16px 0; text-align: left;
+  }
+  .confirm-detail-row {
+    display: flex; justify-content: space-between;
+    font-size: 12px; margin-bottom: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .confirm-detail-row:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+  .confirm-detail-row .label { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase; }
+  .confirm-detail-row .val { color: var(--text); font-weight: 500; text-align: right; max-width: 60%; }
+  .screenshot-notice {
+    background: #1a1500; border: 1px solid #4a3800; border-radius: 8px;
+    padding: 10px 14px; margin: 12px 0; font-size: 12px;
+    color: #f59e0b; display: flex; align-items: center; gap: 8px;
+  }
+  .confirm-close {
+    background: var(--accent3); border: none; color: #0d1f17;
+    border-radius: 8px; padding: 12px 28px;
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: opacity 0.2s; margin-top: 4px;
+  }
+  .confirm-close:hover { opacity: 0.85; }
+
+  /* STATS BAR */
+  .stats-bar {
+    display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 100px;
+  }
+  .stat-card .stat-num {
+    font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800;
+    color: var(--accent);
+  }
+  .stat-card .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  .no-module-msg {
+    display: flex; align-items: center; justify-content: center;
+    height: 300px; color: var(--muted); font-size: 14px;
+    flex-direction: column; gap: 8px;
+  }
+  .no-module-msg .icon { font-size: 40px; }
+
+  /* Booked list */
+  .booked-section { margin-top: 24px; }
+  .booked-section h3 {
+    font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--muted); margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .booked-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .booked-table th {
+    font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted); text-align: left;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  .booked-table td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .booked-table tr:last-child td { border-bottom: none; }
+  .booked-table tr:hover td { background: var(--surface2); }
+  .module-pill {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    padding: 2px 7px; border-radius: 4px;
+    background: #111828; border: 1px solid #1e3461; color: var(--accent);
+  }
+
+  @media (max-width: 768px) {
+    .main-layout { grid-template-columns: 1fr; }
+    .sidebar { position: static; height: auto; }
+    .main-content { padding: 16px; }
+    header { padding: 20px 16px; }
+    .schedule-grid { grid-template-columns: 60px repeat(5, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Fa 2 — Group Presentation Scheduler</div>
+  <h1>Presentation <span>Time</span> Allocator</h1>
+  <div class="header-meta">
+    <div class="chip"><span class="dot"></span> Live · Slots update in real-time</div>
+    <div class="chip">📅 Handout Date: 8 April 2025</div>
+    <div class="chip">⏱ 20 min per slot (15 min pres + 5 min Q&A)</div>
+  </div>
+</header>
+
+<div class="main-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <h2>Modules</h2>
+    <div id="module-list"></div>
+
+    <div class="legend">
+      <h2>Legend</h2>
+      <div class="legend-item"><div class="legend-box" style="background:var(--available);border:1px solid var(--available-border)"></div> Available slot</div>
+      <div class="legend-item"><div class="legend-box" style="background:var(--taken);border:1px solid var(--taken-border)"></div> Booked slot</div>
+      <div class="legend-item"><div class="legend-box" style="background:#0a0b0f;border:1px solid #1a1c24"></div> Not available</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <div class="stats-bar" id="stats-bar"></div>
+    <div id="schedule-area">
+      <div class="no-module-msg">
+        <div class="icon">☝️</div>
+        <div>Select a module from the left to view available slots</div>
+      </div>
+    </div>
+    <div class="booked-section" id="booked-section" style="display:none">
+      <h3 id="booked-title">Booked Presentations</h3>
+      <table class="booked-table">
+        <thead><tr>
+          <th>Group</th><th>Module</th><th>Topic</th><th>Day</th><th>Time</th>
+        </tr></thead>
+        <tbody id="booked-tbody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- BOOKING MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">✕ Close</button>
+    <h2>Book Presentation Slot</h2>
+    <div class="slot-info" id="modal-slot-info"></div>
+    <div class="form-group">
+      <label>Group Name / Number</label>
+      <input type="text" id="inp-group" placeholder="e.g. Group 3 or Team Alpha">
+    </div>
+    <div class="form-group">
+      <label>Module</label>
+      <select id="inp-module"></select>
+    </div>
+    <div class="form-group">
+      <label>Presentation Topic</label>
+      <select id="inp-topic"></select>
+    </div>
+    <div class="form-group">
+      <label>Group Leader Name</label>
+      <input type="text" id="inp-leader" placeholder="Full name of group leader">
+    </div>
+    <button class="btn-book" onclick="confirmBooking()">🗓 Confirm Booking</button>
+  </div>
+</div>
+
+<!-- CONFIRMATION POPUP -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <div class="check">✅</div>
+    <h2>Slot Booked!</h2>
+    <p>Your presentation slot has been successfully reserved.</p>
+    <div class="confirm-details" id="confirm-details"></div>
+    <div class="screenshot-notice">
+      📸 <strong>Important:</strong> Please screenshot this confirmation — this is your only proof of booking.
+    </div>
+    <button class="confirm-close" onclick="closeConfirm()">Done — I've Screenshotted This</button>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  // ─── FIREBASE INIT ────────────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey: "AIzaSyDxCyon1-X_EcFx6epOJpdW095RzPTwdww",
+    authDomain: "presentation-scheduler-37dad.firebaseapp.com",
+    databaseURL: "https://presentation-scheduler-37dad-default-rtdb.firebaseio.com",
+    projectId: "presentation-scheduler-37dad",
+    storageBucket: "presentation-scheduler-37dad.firebasestorage.app",
+    messagingSenderId: "875786971193",
+    appId: "1:875786971193:web:e64a8352828ef27a9645e8"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const bookingsRef = ref(db, "bookings");
+
+  // ─── DATA ─────────────────────────────────────────────────────────────────
+  const MODULES = [
+    { code: "COS511", name: "Computer Science 511", national: false, due: "4 May", topics: ["IT Security Best Practices", "Scripting for Automation and Security Enhancement", "Configuration of Computer Operating Systems for Security", "Hardware Troubleshooting Methodologies", "Software Troubleshooting and Resolution Techniques"] },
+    { code: "COS512", name: "Computer Science 512", national: false, due: "4 May", topics: ["Upgrading to Windows 10: A Comprehensive Guide", "Customizing Windows 10: Desktop Settings and Personalization", "Managing Local Users and Groups in Windows 10", "Device Management in a Workgroup Environment"] },
+    { code: "NET511", name: "Networking 511", national: true, due: "5 May", topics: ["Network Security Concepts and Implementation", "Linux System Monitoring and Performance Management", "Introduction to Linux System Troubleshooting", "Linux System Maintenance and Management", "Linux Security Best Practices", "Automation with Shell Scripting", "Configuration Management with Ansible, Puppet, or Chef"] },
+    { code: "NET621", name: "Networking 621", national: true, due: "5 May", topics: ["Designing and Implementing Scalable and Highly Available Network Architectures", "Network Design Models and Selection Criteria", "Identifying and Mitigating Network Design Issues", "Network Redundancy and High Availability Strategies", "Network Change Management Processes", "Virtualization Technologies and Virtual Machine Management"] },
+    { code: "NET731", name: "Networking 731", national: true, due: "5 May", topics: ["Understanding and Implementing Azure Monitoring, Security, and Cost Management", "Creating and Managing Containers in Azure", "Configuring and Managing Azure Batch for High-Performance Computing", "Implementing and Managing Azure App Service", "Deploying and Managing Azure Functions for Serverless Computing"] },
+    { code: "DAT511", name: "Data 511", national: false, due: "6 May", topics: ["Introduction to Data Management Concepts", "Tracking Time in Databases", "Processing and Manipulating Values", "Building and Optimizing Queries", "Access Control in Databases", "Data Protection and Security", "Implementing Secure Authentication", "Compliance and Regulatory Considerations"] },
+    { code: "DAT731", name: "Data 731", national: false, due: "6 May", topics: ["Understanding the Concept of JSON and Its Use in Data Storage", "Demonstrating the Ability to Import and Export Data in JSON Format", "Extracting and Transforming Data Stored in JSON Format Using SQL Server Tools and Functions", "Understanding the Concept of Graph Databases and Its Use in Data Management", "Demonstrating the Ability to Create Graph Tables and Vertices Using Transact-SQL"] }
+  ];
+
+  const AVAILABILITY = {
+    Mon: { label: "Monday", start: "11:45", end: "12:55" },
+    Tue: { label: "Tuesday", start: "11:45", end: "15:00" },
+    Wed: { label: "Wednesday", start: "11:45", end: "12:55" },
+    Thu: { label: "Thursday", start: "11:30", end: "12:45" },
+    Fri: { label: "Friday", start: "12:00", end: "15:00" }
+  };
+
+  const DAYS = ["Mon","Tue","Wed","Thu","Fri"];
+
+  let bookings = {};
+  let selectedModule = null;
+  let pendingSlot = null;
+  let currentWeekOffset = 0;
+
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+  function timeToMins(t) {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+  function minsToTime(m) {
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  }
+  function formatTime(t) {
+    const [h, m] = t.split(":").map(Number);
+    const ampm = h >= 12 ? "PM" : "AM";
+    const hh = h > 12 ? h - 12 : h === 0 ? 12 : h;
+    return `${hh}:${String(m).padStart(2,"0")} ${ampm}`;
+  }
+  function generateSlots(day) {
+    const av = AVAILABILITY[day];
+    if (!av) return [];
+    const slots = [];
+    let cur = timeToMins(av.start);
+    const end = timeToMins(av.end);
+    while (cur + 20 <= end) { slots.push(minsToTime(cur)); cur += 20; }
+    return slots;
+  }
+  function getWeekDates(weekOffset) {
+    const base = new Date(2026, 3, 13);
+    base.setDate(base.getDate() + weekOffset * 7);
+    const dates = {};
+    DAYS.forEach((d, i) => {
+      const date = new Date(base);
+      date.setDate(base.getDate() + i);
+      dates[d] = date;
+    });
+    return dates;
+  }
+  function formatDate(d) {
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  }
+
+  // ─── FIREBASE LISTENER — updates ALL clients instantly ───────────────────
+  onValue(bookingsRef, (snapshot) => {
+    bookings = snapshot.val() || {};
+    renderAll();
+  });
+
+  // ─── RENDER MODULES ───────────────────────────────────────────────────────
+  function renderModules() {
+    const list = document.getElementById("module-list");
+    list.innerHTML = "";
+    MODULES.forEach(mod => {
+      const totalSlots = DAYS.reduce((sum, d) => sum + generateSlots(d).length, 0);
+      const taken = Object.values(bookings).filter(b => b.module === mod.code).length;
+      const left = totalSlots - taken;
+      const div = document.createElement("div");
+      div.className = "module-card" + (selectedModule === mod.code ? " active" : "");
+      div.innerHTML = `
+        <div class="code">${mod.code}</div>
+        <div class="name">${mod.name}</div>
+        <div class="due">📅 Due: ${mod.due}</div>
+        ${mod.national ? '<div class="national-badge">🌐 National</div>' : ""}
+        <div class="slots-left"><span>${left}</span> slots remaining</div>
+      `;
+      div.onclick = () => { selectedModule = mod.code; renderAll(); };
+      list.appendChild(div);
+    });
+  }
+
+  // ─── RENDER STATS ─────────────────────────────────────────────────────────
+  function renderStats() {
+    const bar = document.getElementById("stats-bar");
+    const totalSlots = DAYS.reduce((sum, d) => sum + generateSlots(d).length, 0);
+    const totalBooked = Object.keys(bookings).length;
+    bar.innerHTML = `
+      <div class="stat-card"><div class="stat-num">${totalSlots}</div><div class="stat-label">Total Slots</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--accent3)">${totalSlots - totalBooked}</div><div class="stat-label">Available</div></div>
+      <div class="stat-card"><div class="stat-num" style="color:var(--accent2)">${totalBooked}</div><div class="stat-label">Booked</div></div>
+      <div class="stat-card"><div class="stat-num">${MODULES.length}</div><div class="stat-label">Modules</div></div>
+    `;
+  }
+
+  // ─── RENDER SCHEDULE ──────────────────────────────────────────────────────
+  function renderSchedule() {
+    const area = document.getElementById("schedule-area");
+    if (!selectedModule) {
+      area.innerHTML = `<div class="no-module-msg"><div class="icon">☝️</div><div>Select a module from the left to view available slots</div></div>`;
+      return;
+    }
+    const dates = getWeekDates(currentWeekOffset);
+    const weekLabel = `Week of ${formatDate(dates.Mon)} – ${formatDate(dates.Fri)}`;
+    const allTimes = new Set();
+    DAYS.forEach(d => generateSlots(d).forEach(s => allTimes.add(s)));
+    const sortedTimes = Array.from(allTimes).sort();
+
+    let html = `
+      <div class="week-nav">
+        <button class="nav-btn" onclick="window._changeWeek(-1)">◀ Prev</button>
+        <h3>📅 ${weekLabel}</h3>
+        <button class="nav-btn" onclick="window._changeWeek(1)">Next ▶</button>
+      </div>
+      <div class="schedule-grid">
+        <div class="grid-header">Time</div>
+    `;
+    DAYS.forEach(d => {
+      html += `<div class="grid-header day-header">${AVAILABILITY[d].label}<div class="date">${formatDate(dates[d])}</div></div>`;
+    });
+
+    sortedTimes.forEach(time => {
+      html += `<div class="time-label">${formatTime(time)}</div>`;
+      DAYS.forEach(d => {
+        const daySlots = generateSlots(d);
+        const key = `${d}_${time.replace(":","_")}`;
+        if (!daySlots.includes(time)) {
+          html += `<div class="slot unavailable"></div>`;
+        } else {
+          const booking = bookings[key];
+          if (booking) {
+            html += `
+              <div class="slot taken" title="${booking.group} — ${booking.module}: ${booking.topic}">
+                <div class="slot-group">${booking.group}</div>
+                <div class="slot-module">${booking.module}</div>
+                <div class="slot-topic">${booking.topic}</div>
+              </div>`;
+          } else {
+            html += `
+              <div class="slot available" onclick="window._openModal('${d}','${time}','${formatDate(dates[d])}')">
+                <div class="avail-label">${formatTime(time)}</div>
+                <div class="click-hint">Click to book</div>
+              </div>`;
+          }
+        }
+      });
+    });
+    html += `</div>`;
+    area.innerHTML = html;
+  }
+
+  // ─── RENDER BOOKED LIST ───────────────────────────────────────────────────
+  function renderBookedList() {
+    const section = document.getElementById("booked-section");
+    const tbody = document.getElementById("booked-tbody");
+    const title = document.getElementById("booked-title");
+    const all = Object.values(bookings);
+    if (all.length === 0) { section.style.display = "none"; return; }
+    section.style.display = "block";
+    title.textContent = `All Booked Presentations (${all.length})`;
+    const dayOrder = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4 };
+    const sorted = all.slice().sort((a,b) => {
+      if (dayOrder[a.dayKey] !== dayOrder[b.dayKey]) return dayOrder[a.dayKey] - dayOrder[b.dayKey];
+      return timeToMins(a.time) - timeToMins(b.time);
+    });
+    tbody.innerHTML = sorted.map(b => `
+      <tr>
+        <td><strong>${b.group}</strong><br><span style="color:var(--muted);font-size:10px">${b.leader}</span></td>
+        <td><span class="module-pill">${b.module}</span></td>
+        <td style="color:#9ca3af">${b.topic}</td>
+        <td>${b.dayLabel}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:11px">${formatTime(b.time)} – ${formatTime(minsToTime(timeToMins(b.time)+20))}</td>
+      </tr>
+    `).join("");
+  }
+
+  // ─── MODAL ────────────────────────────────────────────────────────────────
+  function openModal(day, time, dateStr) {
+    pendingSlot = { day, time, dateStr };
+    document.getElementById("modal-slot-info").textContent =
+      `📅 ${AVAILABILITY[day].label}, ${dateStr} · ${formatTime(time)} – ${formatTime(minsToTime(timeToMins(time)+20))}`;
+    const modSel = document.getElementById("inp-module");
+    modSel.innerHTML = MODULES.map(m => `<option value="${m.code}" ${m.code===selectedModule?"selected":""}>${m.code} — ${m.name}</option>`).join("");
+    updateTopics();
+    modSel.onchange = updateTopics;
+    document.getElementById("inp-group").value = "";
+    document.getElementById("inp-leader").value = "";
+    document.getElementById("modal").classList.add("open");
+  }
+
+  function updateTopics() {
+    const code = document.getElementById("inp-module").value;
+    const mod = MODULES.find(m => m.code === code);
+    const topSel = document.getElementById("inp-topic");
+    topSel.innerHTML = mod.topics.map(t => `<option value="${t}">${t}</option>`).join("");
+  }
+
+  function closeModal() {
+    document.getElementById("modal").classList.remove("open");
+    pendingSlot = null;
+  }
+
+  async function confirmBooking() {
+    const group = document.getElementById("inp-group").value.trim();
+    const leader = document.getElementById("inp-leader").value.trim();
+    const module = document.getElementById("inp-module").value;
+    const topic = document.getElementById("inp-topic").value;
+    if (!group || !leader) { alert("Please fill in all fields."); return; }
+
+    const key = `${pendingSlot.day}_${pendingSlot.time.replace(":","_")}`;
+
+    // Re-check Firebase right before writing to prevent race conditions
+    const snapshot = await get(ref(db, `bookings/${key}`));
+    if (snapshot.exists()) {
+      alert("Sorry, this slot was just taken by someone else! Please choose another.");
+      closeModal();
+      return;
+    }
+
+    const mod = MODULES.find(m => m.code === module);
+    const booking = {
+      group, leader, module, topic,
+      dayKey: pendingSlot.day,
+      dayLabel: AVAILABILITY[pendingSlot.day].label,
+      dateStr: pendingSlot.dateStr,
+      time: pendingSlot.time
+    };
+
+    // Write to Firebase — all other users will see this instantly via onValue
+    await set(ref(db, `bookings/${key}`), booking);
+
+    const endTime = minsToTime(timeToMins(pendingSlot.time) + 20);
+    document.getElementById("confirm-details").innerHTML = `
+      <div class="confirm-detail-row"><span class="label">Group</span><span class="val">${group}</span></div>
+      <div class="confirm-detail-row"><span class="label">Leader</span><span class="val">${leader}</span></div>
+      <div class="confirm-detail-row"><span class="label">Module</span><span class="val">${module} — ${mod.name}</span></div>
+      <div class="confirm-detail-row"><span class="label">Topic</span><span class="val">${topic}</span></div>
+      <div class="confirm-detail-row"><span class="label">Day</span><span class="val">${AVAILABILITY[pendingSlot.day].label}, ${pendingSlot.dateStr}</span></div>
+      <div class="confirm-detail-row"><span class="label">Time</span><span class="val">${formatTime(pendingSlot.time)} – ${formatTime(endTime)}</span></div>
+      <div class="confirm-detail-row"><span class="label">Due Date</span><span class="val">${mod.due}</span></div>
+    `;
+    closeModal();
+    document.getElementById("confirm-overlay").classList.add("open");
+  }
+
+  function closeConfirm() {
+    document.getElementById("confirm-overlay").classList.remove("open");
+  }
+
+  function changeWeek(dir) {
+    currentWeekOffset += dir;
+    renderSchedule();
+  }
+
+  function renderAll() {
+    renderModules();
+    renderStats();
+    renderSchedule();
+    renderBookedList();
+  }
+
+  // Expose to inline onclick handlers
+  window._openModal = openModal;
+  window._changeWeek = changeWeek;
+  window.closeModal = closeModal;
+  window.closeConfirm = closeConfirm;
+  window.confirmBooking = confirmBooking;
+  window.updateTopics = updateTopics;
+</script>
+</body>
+</html>
