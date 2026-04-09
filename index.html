@@ -453,10 +453,10 @@
   </div>
 </div>
 
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+<!-- Firebase SDK (compat version - works on all static hosts) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
 
   // ─── FIREBASE INIT ────────────────────────────────────────────────────────
   const firebaseConfig = {
@@ -468,9 +468,9 @@
     messagingSenderId: "875786971193",
     appId: "1:875786971193:web:e64a8352828ef27a9645e8"
   };
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const bookingsRef = ref(db, "bookings");
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  const bookingsRef = db.ref("bookings");
 
   // ─── DATA ─────────────────────────────────────────────────────────────────
   const MODULES = [
@@ -539,7 +539,7 @@
   }
 
   // ─── FIREBASE LISTENER — updates ALL clients instantly ───────────────────
-  onValue(bookingsRef, (snapshot) => {
+  bookingsRef.on("value", (snapshot) => {
     bookings = snapshot.val() || {};
     renderAll();
   });
@@ -696,7 +696,7 @@
     const key = `${pendingSlot.day}_${pendingSlot.time.replace(":","_")}`;
 
     // Re-check Firebase right before writing to prevent race conditions
-    const snapshot = await get(ref(db, `bookings/${key}`));
+    const snapshot = await db.ref(`bookings/${key}`).once("value");
     if (snapshot.exists()) {
       alert("Sorry, this slot was just taken by someone else! Please choose another.");
       closeModal();
@@ -712,8 +712,8 @@
       time: pendingSlot.time
     };
 
-    // Write to Firebase — all other users will see this instantly via onValue
-    await set(ref(db, `bookings/${key}`), booking);
+    // Write to Firebase — all other users will see this instantly
+    await db.ref(`bookings/${key}`).set(booking);
 
     const endTime = minsToTime(timeToMins(pendingSlot.time) + 20);
     document.getElementById("confirm-details").innerHTML = `
