@@ -698,7 +698,9 @@
       html += `<div class="time-label">${formatTime(time)}</div>`;
       DAYS.forEach(d => {
         const daySlots = generateSlots(d);
-        const key = `${d}_${time.replace(":","_")}`;
+        const dateObj = dates[d];
+        const dateKey = `${dateObj.getFullYear()}_${dateObj.getMonth()+1}_${dateObj.getDate()}`;
+        const key = `${d}_${dateKey}_${time.replace(":","_")}`;
         if (!daySlots.includes(time)) {
           html += `<div class="slot unavailable"></div>`;
         } else {
@@ -712,7 +714,7 @@
               </div>`;
           } else {
             html += `
-              <div class="slot available" onclick="window._openModal('${d}','${time}','${formatDate(dates[d])}')">
+              <div class="slot available" onclick="window._openModal('${d}','${time}','${formatDate(dates[d])}','${dates[d].getFullYear()}_${dates[d].getMonth()+1}_${dates[d].getDate()}')">
                 <div class="avail-label">${formatTime(time)}</div>
                 <div class="click-hint">Click to book</div>
               </div>`;
@@ -750,8 +752,8 @@
   }
 
   // ─── MODAL ────────────────────────────────────────────────────────────────
-  function openModal(day, time, dateStr) {
-    pendingSlot = { day, time, dateStr };
+  function openModal(day, time, dateStr, dateKey) {
+    pendingSlot = { day, time, dateStr, dateKey };
     document.getElementById("modal-slot-info").textContent =
       `📅 ${AVAILABILITY[day].label}, ${dateStr} · ${formatTime(time)} – ${formatTime(minsToTime(timeToMins(time)+20))}`;
     const modSel = document.getElementById("inp-module");
@@ -782,7 +784,7 @@
     const topic = document.getElementById("inp-topic").value;
     if (!group || !leader) { alert("Please fill in all fields."); return; }
 
-    const key = `${pendingSlot.day}_${pendingSlot.time.replace(":","_")}`;
+    const key = `${pendingSlot.day}_${pendingSlot.dateKey}_${pendingSlot.time.replace(":","_")}`;
 
     // Re-check Firebase right before writing to prevent race conditions
     const snapshot = await db.ref(`bookings/${key}`).once("value");
