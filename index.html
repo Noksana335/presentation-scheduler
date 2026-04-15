@@ -695,29 +695,28 @@
     });
 
     sortedTimes.forEach(time => {
-      html += `<div class="time-label">${formatTime(time)}</div>`;
+      html += '<div class="time-label">' + formatTime(time) + '</div>';
       DAYS.forEach(d => {
         const daySlots = generateSlots(d);
         const dateObj = dates[d];
-        const dateKey = `${dateObj.getFullYear()}_${dateObj.getMonth()+1}_${dateObj.getDate()}`;
-        const key = `${d}_${dateKey}_${time.replace(":","_")}`;
+        const dateKey = dateObj.getFullYear() + '_' + (dateObj.getMonth()+1) + '_' + dateObj.getDate();
+        const key = d + '_' + dateKey + '_' + time.replace(':','_');
+        const dateStr = formatDate(dateObj);
         if (!daySlots.includes(time)) {
-          html += `<div class="slot unavailable"></div>`;
+          html += '<div class="slot unavailable"></div>';
         } else {
           const booking = bookings[key];
           if (booking) {
-            html += `
-              <div class="slot taken" title="${booking.group} — ${booking.module}: ${booking.topic}">
-                <div class="slot-group">${booking.group}</div>
-                <div class="slot-module">${booking.module}</div>
-                <div class="slot-topic">${booking.topic}</div>
-              </div>`;
+            html += '<div class="slot taken" title="' + booking.group + ' — ' + booking.module + ': ' + booking.topic + '">'
+              + '<div class="slot-group">' + booking.group + '</div>'
+              + '<div class="slot-module">' + booking.module + '</div>'
+              + '<div class="slot-topic">' + booking.topic + '</div>'
+              + '</div>';
           } else {
-            html += `
-              <div class="slot available" onclick="window._openModal('${d}','${time}','${formatDate(dates[d])}','${dates[d].getFullYear()}_${dates[d].getMonth()+1}_${dates[d].getDate()}')">
-                <div class="avail-label">${formatTime(time)}</div>
-                <div class="click-hint">Click to book</div>
-              </div>`;
+            html += '<div class="slot available" onclick="window._openModal('' + d + '','' + time + '','' + dateStr + '','' + dateKey + '')">'
+              + '<div class="avail-label">' + formatTime(time) + '</div>'
+              + '<div class="click-hint">Click to book</div>'
+              + '</div>';
           }
         }
       });
